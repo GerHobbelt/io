@@ -1177,7 +1177,7 @@ LRESULT CALLBACK fgWindowProc( HWND hWnd, UINT uMsg, WPARAM wParam,
     {
     case WM_CREATE:
         /*
-         * The window structure is passed as the creation structure paramter...
+         * The window structure is passed as the creation structure parameter...
          */
         window = (SFG_Window *) (((LPCREATESTRUCT) lParam)->lpCreateParams);
         assert( window != NULL );
