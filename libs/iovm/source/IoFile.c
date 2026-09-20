@@ -42,7 +42,11 @@ file close
 #define pclose(x) _pclose(x)
 #endif
 
-#if defined(__SYMBIAN32__)
+#if defined(__wasi__) || defined(__EMSCRIPTEN__) || defined(__wasm__)
+/* WASM: no process pipes */
+static int pclose(FILE *f) { return 0; }
+static FILE *popen(const char *cmd, const char *mode) { return NULL; }
+#elif defined(__SYMBIAN32__)
 static int pclose(void *f) { return 0; }
 static int popen(void *f, int m) { return 0; }
 static int rename(void *a, void *b) { return 0; }
@@ -224,9 +228,9 @@ void IoFile_justClose(IoFile *self) {
         if (stream != stdout && stream != stdin) {
             if (DATA(self)->flags == IOFILE_FLAGS_PIPE) {
                 int exitStatus = pclose(stream);
-#if !defined(_MSC_VER) &&                                                      \
-    !defined(__MINGW32__) /* No sys/wait.h in mingw, therefore can't use       \
-                             WIFEXITED, WEXITSTATUS, etc. */
+#if !defined(_MSC_VER) && !defined(__MINGW32__) &&                              \
+    !defined(__wasi__) && !defined(__EMSCRIPTEN__) &&                           \
+    !defined(__wasm__) /* No sys/wait.h on mingw/WASM */
                 if (WIFEXITED(exitStatus) == 1) {
                     exitStatus = WEXITSTATUS(exitStatus);
                     IoObject_setSlot_to_(self, IOSYMBOL("exitStatus"),
@@ -379,9 +383,14 @@ IO_METHOD(IoFile, temporaryFile) {
     collected.
     */
 
+#if defined(__wasi__) || defined(__EMSCRIPTEN__) || defined(__wasm__)
+    IoState_error_(IOSTATE, m, "temporary files not supported on WASM", NULL);
+    return IONIL(self);
+#else
     IoFile *newFile = IoFile_new(IOSTATE);
     DATA(newFile)->stream = tmpfile();
     return newFile;
+#endif
 }
 
 IO_METHOD(IoFile, openForReading) {
@@ -649,7 +658,8 @@ IO_METHOD(IoFile, remove) {
 
 #if defined(__SYMBIAN32__)
     error = -1;
-#elif defined(_MSC_VER) || defined(__MINGW32__)
+#elif defined(_MSC_VER) || defined(__MINGW32__) || defined(__wasi__) || \
+    defined(__EMSCRIPTEN__) || defined(__wasm__)
     if (IoFile_justExists(self)) {
         if (ISTRUE(IoFile_isDirectory(self, locals, m))) {
             error = rmdir(UTF8CSTRING(DATA(self)->path));
